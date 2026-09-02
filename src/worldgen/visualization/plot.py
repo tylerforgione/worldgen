@@ -11,6 +11,6 @@ def plot_heightmap_3d(heightmap: np.ndarray, vertical_scale: float = 100.0) -> N
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
 
-    ax.plot_surface(X, Y, heightmap)
+    ax.plot_surface(X, Y, heightmap * vertical_scale, cmap="terrain")
 
     plt.show()
