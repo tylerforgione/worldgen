@@ -1,25 +1,33 @@
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 def generate_white_noise(width: int, height: int, seed: int):
     rng = np.random.default_rng(seed)
     return rng.random(size=(height, width), dtype=np.float32)
 
+
 # imprecise lerp
 def lerp(v0: float, v1: float, t: float):
     return v0 + t * (v1 - v0)
+
 
 # cubic Hermite
 def smoothstep(t: float):
     return (3 * t**2) - (2 * t**3)
 
-def generate_value_noise(width: int, height: int, seed: int, wavelength: float):
+
+def generate_value_noise(
+    width: int, height: int, seed: int, wavelength: float
+) -> np.ndarray:
     # find grid height and width
     grid_width = int(np.ceil(width / wavelength)) + 1
     grid_height = int(np.ceil(height / wavelength)) + 1
 
     # create a coarse grid with random seeded values
-    grid = np.random.default_rng(seed=seed).random(size=(grid_height, grid_width), dtype=np.float32)
+    grid = np.random.default_rng(seed=seed).random(
+        size=(grid_height, grid_width), dtype=np.float32
+    )
 
     # create an output array to store values
     output = np.zeros(shape=(height, width), dtype=np.float32)
@@ -40,7 +48,7 @@ def generate_value_noise(width: int, height: int, seed: int, wavelength: float):
 
             tx = sample_x - cell_x
             ty = sample_y - cell_y
-            
+
             # smooth
             smooth_tx = smoothstep(t=tx)
             smooth_ty = smoothstep(t=ty)
@@ -56,26 +64,37 @@ def generate_value_noise(width: int, height: int, seed: int, wavelength: float):
 
     return output
 
-def generate_fractal_noise(width: int, height: int, seed: int, wavelength: float, 
-                           octaves: int, persistence: float = 0.5, lacunarity: float = 2.0):
+
+def generate_fractal_noise(
+    width: int,
+    height: int,
+    seed: int,
+    wavelength: float,
+    octaves: int,
+    persistence: float = 0.5,
+    lacunarity: float = 2.0,
+) -> np.ndarray:
     output = np.zeros(shape=(height, width), dtype=np.float32)
     total_amplitude = 0.0
 
     for i in range(octaves):
-        current_wavelength = wavelength / (lacunarity ** i)
+        current_wavelength = wavelength / (lacunarity**i)
 
         if current_wavelength < 1:
             break
-        
-        amplitude = persistence ** i
+
+        amplitude = persistence**i
         total_amplitude += amplitude
 
-        noise = generate_value_noise(width=width, height=height, seed=seed+i, wavelength=current_wavelength)
+        noise = generate_value_noise(
+            width=width, height=height, seed=seed + i, wavelength=current_wavelength
+        )
         output += noise * amplitude
 
     output /= total_amplitude
     return output
 
+
 noise = generate_fractal_noise(1024, 1024, 56, 64, 8)
-plt.imshow(X=noise, cmap='gray')
+plt.imshow(X=noise, cmap="gray")
 plt.show()
