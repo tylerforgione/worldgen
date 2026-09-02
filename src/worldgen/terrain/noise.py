@@ -2,37 +2,95 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def generate_white_noise(width: int, height: int, seed: int):
+def generate_white_noise(width: int, height: int, seed: int) -> np.ndarray:
+    """
+    Generate a 2D array of seeded white noise.
+
+    Each output value is generated independently in the range [0, 1).
+    Using the same seed produces the same noise.
+
+    Args:
+        width: Width of the output array in samples.
+        height: Height of the output array in samples.
+        seed: Seed used to initialize the random number generator.
+
+    Returns:
+        A 2D NumPy array of shape (height, width) containing white noise.
+    """
     rng = np.random.default_rng(seed)
     return rng.random(size=(height, width), dtype=np.float32)
 
 
-# imprecise lerp
 def lerp(v0: float, v1: float, t: float):
+    """
+    Linearly interpolate between two values.
+
+    Args:
+        v0: Starting value.
+        v1: Ending value.
+        t: Interpolation factor, typically in the range [0, 1].
+
+    Returns:
+        The interpolated value between v0 and v1.
+    """
     return v0 + t * (v1 - v0)
 
 
-# cubic Hermite
 def smoothstep(t: float):
+    """
+    Apply cubic Hermite smoothing to an interpolation factor.
+
+    Smooths the transition from 0 to 1 so that the rate of change is
+    zero at both endpoints.
+
+    Args:
+        t: Interpolation factor, typically in the range [0, 1].
+
+    Returns:
+        The smoothed interpolation factor.
+    """
     return (3 * t**2) - (2 * t**3)
 
 
 def generate_value_noise(
-    width: int, height: int, seed: int, wavelength: float
+    width: int,
+    height: int,
+    seed: int,
+    wavelength: float,
 ) -> np.ndarray:
-    # find grid height and width
+    """
+    Generate 2D value noise using a seeded random lattice.
+
+    Random values are assigned to points on a coarse lattice. Each output
+    sample is calculated by smoothly interpolating between the four lattice
+    points surrounding it.
+
+    Larger wavelengths produce broader, smoother features, while smaller
+    wavelengths produce finer features.
+
+    Args:
+        width: Width of the output array in samples.
+        height: Height of the output array in samples.
+        seed: Seed used to generate the random lattice values.
+        wavelength: Distance, in output samples, between lattice points.
+
+    Returns:
+        A 2D NumPy array of shape (height, width) containing value noise
+        approximately in the range [0, 1].
+    """
     grid_width = int(np.ceil(width / wavelength)) + 1
     grid_height = int(np.ceil(height / wavelength)) + 1
 
-    # create a coarse grid with random seeded values
     grid = np.random.default_rng(seed=seed).random(
-        size=(grid_height, grid_width), dtype=np.float32
+        size=(grid_height, grid_width),
+        dtype=np.float32,
     )
 
-    # create an output array to store values
-    output = np.zeros(shape=(height, width), dtype=np.float32)
+    output = np.zeros(
+        shape=(height, width),
+        dtype=np.float32,
+    )
 
-    # given the cell (X, Y), we can find the lattic points (corners)
     for Y in range(height):
         for X in range(width):
             sample_x = X / wavelength
@@ -49,18 +107,28 @@ def generate_value_noise(
             tx = sample_x - cell_x
             ty = sample_y - cell_y
 
-            # smooth
             smooth_tx = smoothstep(t=tx)
             smooth_ty = smoothstep(t=ty)
 
-            # interpolate
-            top = lerp(v0=top_left, v1=top_right, t=smooth_tx)
-            bottom = lerp(v0=bottom_left, v1=bottom_right, t=smooth_tx)
+            top = lerp(
+                v0=top_left,
+                v1=top_right,
+                t=smooth_tx,
+            )
 
-            value = lerp(v0=top, v1=bottom, t=smooth_ty)
+            bottom = lerp(
+                v0=bottom_left,
+                v1=bottom_right,
+                t=smooth_tx,
+            )
 
-            # store interpolated value
-            output[Y][X] = value
+            value = lerp(
+                v0=top,
+                v1=bottom,
+                t=smooth_ty,
+            )
+
+            output[Y, X] = value
 
     return output
 
@@ -74,7 +142,34 @@ def generate_fractal_noise(
     persistence: float = 0.5,
     lacunarity: float = 2.0,
 ) -> np.ndarray:
-    output = np.zeros(shape=(height, width), dtype=np.float32)
+    """
+    Generate 2D fractal noise by combining multiple octaves of value noise.
+
+    Each successive octave uses a shorter wavelength and a lower amplitude,
+    adding progressively finer detail to the result. The combined output is
+    normalized by the total amplitude.
+
+    Args:
+        width: Width of the output array in samples.
+        height: Height of the output array in samples.
+        seed: Base seed used to generate deterministic octave noise.
+        wavelength: Wavelength of the first and coarsest octave.
+        octaves: Maximum number of noise octaves to combine.
+        persistence: Factor by which amplitude decreases each octave.
+            Lower values reduce the influence of fine-scale detail.
+        lacunarity: Factor by which frequency increases each octave.
+            Higher values cause successive octaves to introduce
+            smaller-scale features more quickly.
+
+    Returns:
+        A 2D NumPy array of shape (height, width) containing normalized
+        fractal value noise approximately in the range [0, 1].
+    """
+    output = np.zeros(
+        shape=(height, width),
+        dtype=np.float32,
+    )
+
     total_amplitude = 0.0
 
     for i in range(octaves):
@@ -87,14 +182,14 @@ def generate_fractal_noise(
         total_amplitude += amplitude
 
         noise = generate_value_noise(
-            width=width, height=height, seed=seed + i, wavelength=current_wavelength
+            width=width,
+            height=height,
+            seed=seed + i,
+            wavelength=current_wavelength,
         )
+
         output += noise * amplitude
 
     output /= total_amplitude
+
     return output
-
-
-noise = generate_fractal_noise(1024, 1024, 56, 64, 8)
-plt.imshow(X=noise, cmap="gray")
-plt.show()
