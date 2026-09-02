@@ -1,8 +1,28 @@
+# Virtual environment
 .worldgen/
-__pycache__/
-*.pyc
+.venv/
 
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Packaging/build artifacts
+*.egg-info/
+build/
+dist/
+
+# Generated world output
 output/*
 !output/.gitkeep
 
+# macOS
 .DS_Store
+
+# Test/tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Coverage
+.coverage
+htmlcov/
