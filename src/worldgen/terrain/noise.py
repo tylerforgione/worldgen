@@ -13,7 +13,7 @@ def lerp(v0: int, v1: int, t: float):
 def smoothstep(t: float):
     return (3 * t**2) - (2 * t**3)
 
-def generate_value_noise(width: int, height: int, seed: int, wavelength: int):
+def generate_value_noise(width: int, height: int, seed: int, wavelength: float):
     # find grid height and width
     grid_width = int(np.ceil(width / wavelength)) + 1
     grid_height = int(np.ceil(height / wavelength)) + 1
@@ -27,16 +27,19 @@ def generate_value_noise(width: int, height: int, seed: int, wavelength: int):
     # given the cell (X, Y), we can find the lattic points (corners)
     for Y in range(height):
         for X in range(width):
-            cell_x = X // wavelength
-            cell_y = Y // wavelength
+            sample_x = X / wavelength
+            sample_y = Y / wavelength
+
+            cell_x = int(np.floor(sample_x))
+            cell_y = int(np.floor(sample_y))
 
             top_left = grid[cell_y, cell_x]
             top_right = grid[cell_y, cell_x + 1]
             bottom_left = grid[cell_y + 1, cell_x]
             bottom_right = grid[cell_y + 1, cell_x + 1]
 
-            tx = (X % wavelength) / wavelength
-            ty = (Y % wavelength) / wavelength
+            tx = sample_x - cell_x
+            ty = sample_y - cell_y
             
             # smooth
             smooth_tx = smoothstep(t=tx)
@@ -53,17 +56,18 @@ def generate_value_noise(width: int, height: int, seed: int, wavelength: int):
 
     return output
 
-def generate_fractal_noise(width: int, height: int, seed: int, wavelength:int, octaves: int):
+def generate_fractal_noise(width: int, height: int, seed: int, wavelength: float, 
+                           octaves: int, persistence: float = 0.5, lacunarity: float = 2.0):
     output = np.zeros(shape=(height, width), dtype=np.float32)
     total_amplitude = 0.0
 
     for i in range(octaves):
-        current_wavelength = int(wavelength / (2 ** i))
+        current_wavelength = wavelength / (lacunarity ** i)
 
         if current_wavelength < 1:
             break
         
-        amplitude = (1 / 2**i)
+        amplitude = persistence ** 1
         total_amplitude += amplitude
 
         noise = generate_value_noise(width=width, height=height, seed=seed, wavelength=current_wavelength)
@@ -72,6 +76,6 @@ def generate_fractal_noise(width: int, height: int, seed: int, wavelength:int, o
     output /= total_amplitude
     return output
 
-noise = generate_fractal_noise(1024, 1024, 56, 64, 4)
+noise = generate_fractal_noise(1024, 1024, 56, 64, 8)
 plt.imshow(X=noise, cmap='gray')
 plt.show()
