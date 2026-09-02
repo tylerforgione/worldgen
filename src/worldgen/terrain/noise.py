@@ -6,7 +6,7 @@ def generate_white_noise(width: int, height: int, seed: int):
     return rng.random(size=(height, width), dtype=np.float32)
 
 # imprecise lerp
-def lerp(v0: int, v1: int, t: float):
+def lerp(v0: float, v1: float, t: float):
     return v0 + t * (v1 - v0)
 
 # cubic Hermite
@@ -60,6 +60,7 @@ def generate_fractal_noise(width: int, height: int, seed: int, wavelength: float
                            octaves: int, persistence: float = 0.5, lacunarity: float = 2.0):
     output = np.zeros(shape=(height, width), dtype=np.float32)
     total_amplitude = 0.0
+    current_seed = seed
 
     for i in range(octaves):
         current_wavelength = wavelength / (lacunarity ** i)
@@ -70,7 +71,9 @@ def generate_fractal_noise(width: int, height: int, seed: int, wavelength: float
         amplitude = persistence ** 1
         total_amplitude += amplitude
 
-        noise = generate_value_noise(width=width, height=height, seed=seed, wavelength=current_wavelength)
+        current_seed += 1
+
+        noise = generate_value_noise(width=width, height=height, seed=current_seed, wavelength=current_wavelength)
         output += noise * amplitude
 
     output /= total_amplitude
