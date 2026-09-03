@@ -4,10 +4,11 @@ import taichi as ti
 
 def generate_white_noise(width: int, height: int, seed: int) -> np.ndarray:
     """
-    Generate a 2D array of seeded white noise.
+    Generate a deterministic 2D field of white noise.
 
-    Each output value is generated independently in the range [0, 1).
-    Using the same seed produces the same noise.
+    Each output sample is generated independently from a uniform distribution
+    in the range [0, 1). NumPy is used for seeded random-number generation so
+    that the same seed produces the same noise field.
 
     Args:
         width: Width of the output array in samples.
@@ -15,7 +16,8 @@ def generate_white_noise(width: int, height: int, seed: int) -> np.ndarray:
         seed: Seed used to initialize the random number generator.
 
     Returns:
-        A 2D NumPy array of shape (height, width) containing white noise.
+        A NumPy array of shape (height, width) and dtype float32 containing
+        white-noise samples in the range [0, 1).
     """
     rng = np.random.default_rng(seed)
     return rng.random(size=(height, width), dtype=np.float32)
@@ -24,7 +26,7 @@ def generate_white_noise(width: int, height: int, seed: int) -> np.ndarray:
 @ti.func
 def lerp(v0, v1, t):
     """
-    Linearly interpolate between two values.
+    Linearly interpolate between two values inside a Taichi kernel.
 
     Args:
         v0: Starting value.
@@ -32,7 +34,7 @@ def lerp(v0, v1, t):
         t: Interpolation factor, typically in the range [0, 1].
 
     Returns:
-        The interpolated value between v0 and v1.
+        The value interpolated between v0 and v1 by factor t.
     """
     return v0 + t * (v1 - v0)
 
@@ -40,10 +42,10 @@ def lerp(v0, v1, t):
 @ti.func
 def smoothstep(t):
     """
-    Apply cubic Hermite smoothing to an interpolation factor.
+    Apply cubic Hermite smoothing inside a Taichi kernel.
 
-    Smooths the transition from 0 to 1 so that the rate of change is
-    zero at both endpoints.
+    Transforms an interpolation factor so that its first derivative is zero
+    at both endpoints, producing smoother transitions between lattice cells.
 
     Args:
         t: Interpolation factor, typically in the range [0, 1].
@@ -60,6 +62,22 @@ def generate_value_noise_kernel(
     output: ti.types.ndarray(dtype=ti.f32, ndim=2),
     wavelength: ti.f32,
 ):
+    """
+    Compute a value-noise field in parallel using Taichi.
+
+    Each output sample is computed independently by locating its surrounding
+    lattice points and smoothly interpolating their values. Taichi parallelizes
+    the iteration over the 2D output array, allowing the computation to run on
+    the configured CPU or GPU backend.
+
+    The output array is modified in place.
+
+    Args:
+        grid: 2D float32 array containing random values at lattice points.
+        output: 2D float32 array to fill with interpolated noise values.
+        wavelength: Distance, in output samples, between adjacent lattice
+            points.
+    """
     for Y, X in output:
         sample_x = X / wavelength
         sample_y = Y / wavelength
@@ -106,11 +124,14 @@ def generate_value_noise(
     wavelength: float,
 ) -> np.ndarray:
     """
-    Generate 2D value noise using a seeded random lattice.
+    Generate deterministic 2D value noise.
 
-    Random values are assigned to points on a coarse lattice. Each output
-    sample is calculated by smoothly interpolating between the four lattice
-    points surrounding it.
+    Creates a coarse lattice of seeded random values using NumPy, then delegates
+    interpolation of the output samples to a parallel Taichi kernel.
+
+    Each output sample is determined by the four surrounding lattice values.
+    Cubic smoothstep interpolation is used to produce continuous, smoothly
+    varying noise across lattice-cell boundaries.
 
     Larger wavelengths produce broader, smoother features, while smaller
     wavelengths produce finer features.
@@ -118,12 +139,13 @@ def generate_value_noise(
     Args:
         width: Width of the output array in samples.
         height: Height of the output array in samples.
-        seed: Seed used to generate the random lattice values.
-        wavelength: Distance, in output samples, between lattice points.
+        seed: Seed used to generate the random lattice.
+        wavelength: Distance, in output samples, between adjacent lattice
+            points.
 
     Returns:
-        A 2D NumPy array of shape (height, width) containing value noise
-        approximately in the range [0, 1].
+        A NumPy array of shape (height, width) and dtype float32 containing
+        value noise approximately in the range [0, 1].
     """
     grid_width = int(np.ceil(width / wavelength)) + 1
     grid_height = int(np.ceil(height / wavelength)) + 1
@@ -152,27 +174,39 @@ def generate_fractal_noise(
     lacunarity: float = 2.0,
 ) -> np.ndarray:
     """
-    Generate 2D fractal noise by combining multiple octaves of value noise.
+    Generate deterministic 2D fractal value noise from multiple octaves.
 
-    Each successive octave uses a shorter wavelength and a lower amplitude,
-    adding progressively finer detail to the result. The combined output is
-    normalized by the total amplitude.
+    Combines several value-noise fields at progressively smaller wavelengths.
+    Each octave adds finer spatial detail while its contribution is scaled by
+    an amplitude determined by persistence.
+
+    Individual value-noise fields are generated using the parallel Taichi
+    implementation. Octaves are currently generated and combined sequentially
+    in Python.
+
+    Each octave uses a seed derived from the base seed so that the complete
+    field remains deterministic while each octave uses a different random
+    lattice.
+
+    Octaves whose wavelength would fall below one output sample are skipped.
+    The final field is normalized by the sum of the amplitudes of all generated
+    octaves.
 
     Args:
         width: Width of the output array in samples.
         height: Height of the output array in samples.
-        seed: Base seed used to generate deterministic octave noise.
+        seed: Base seed used to derive the seed for each octave.
         wavelength: Wavelength of the first and coarsest octave.
-        octaves: Maximum number of noise octaves to combine.
-        persistence: Factor by which amplitude decreases each octave.
-            Lower values reduce the influence of fine-scale detail.
-        lacunarity: Factor by which frequency increases each octave.
-            Higher values cause successive octaves to introduce
-            smaller-scale features more quickly.
+        octaves: Maximum number of octaves to generate.
+        persistence: Factor controlling amplitude decay between successive
+            octaves. Higher values give fine-scale detail more influence.
+        lacunarity: Factor controlling how quickly wavelength decreases between
+            successive octaves. Higher values introduce smaller-scale features
+            more rapidly.
 
     Returns:
-        A 2D NumPy array of shape (height, width) containing normalized
-        fractal value noise approximately in the range [0, 1].
+        A NumPy array of shape (height, width) and dtype float32 containing
+        normalized fractal value noise approximately in the range [0, 1].
     """
     output = np.zeros(
         shape=(height, width),
