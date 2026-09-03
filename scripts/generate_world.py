@@ -7,8 +7,8 @@ initialize_compute()
 heightmap = generate_heightmap(
     width=1024,
     height=1024,
-    seed=654,
-    wavelength=128,
+    seed=8974,
+    wavelength=256,
     octaves=8,
     redistribution=4.0,
 )

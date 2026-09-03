@@ -101,14 +101,69 @@ This results in an output like that in Figure \ref{fig:white-noise}. As is obvio
         \centering
         \includegraphics[width=\textwidth]{images/whitenoise_3d.png}
         \caption{White noise plotted in 3D}
-        \label{fig:value-noise}
+        \label{fig:white-noise-3d}
     \end{subfigure}
 
     \caption{White noise in 2D and 3D}
-    \label{fig:white-noise-3d}
+    \label{fig:white-noise-comparison}
 \end{figure}
 
+Since terrain needs some sort of synchronicity between adjacent points, white noise won't cut it. Luckily, there are other noise algorithms that provide far better results.
+
 \subsection{Value Noise}
+
+The idea behind value noise is simple: create a grid of random values at integer points $(x, y)$ and interpolate between them to achieve smooth transitions. Essentially, for any integer point, we must find the surrounding lattice points (4 corners of the cell) and interpolate between them.
+
+Just doing this, however, does not achieve the smoothest of transitions. Without using smoothing, we still may get clunky or jagged edges. Thus, the final piece of the puzzle for value noise is an additional smoothing on the weight parameter in linear interpolation.
+
+Mathematically it's this: we begin with a smoothing function, the cubic Hermite smoothstep
+
+\begin{equation}
+    S(t)=3t^2 - 2t^3
+    \label{eq:cubic-hermite}
+\end{equation}
+
+We can then define the following:
+
+\begin{align*}
+    s=S(u) &  &
+    t=S(v)
+\end{align*}
+
+Next, we can use our linear interpolation function
+
+\begin{equation}
+    L(a,b,t)=a+t(b-a)
+    \label{eq:lerp}
+\end{equation}
+
+to interpolate the top two points and bottom two points horizontally
+
+\begin{align*}
+    T=L(v_{00}, v_{10}, s) \\
+    B=L(v_{01}, v_{11}, s)
+\end{align*}
+
+and to interpolate these two vertically
+
+\[
+    N(x, y) = L(T, B, t)
+\]
+
+Substituting and expanding gets us
+
+\begin{equation}
+    N(x, y) = L(L(v_{00}, v_{10}, S(u)), L(v_{01}, v_{11}, S(u)), S(v))
+    \label{eq:value-noise}
+\end{equation}
+
+Where $S$ and $L$ are equation \ref{eq:cubic-hermite} and equation \ref{eq:lerp}, respectively.
+
+One other factor we may want to take into account is the wavelength, which is the distance between adjacent lattice points. The lower the wavelength, the higher the spatial frequency of the noise. As wavelength goes to $1$, the closer we get to white noise because there will be less interpolation between lattice points.
+
+From equation \ref{eq:value-noise}, we can replace $x$ and $y$ with $x' = \lfloor \frac{x}{\lambda} \rfloor$ and $y' = \lfloor \frac{y}{\lambda} \rfloor$, where $\lambda$ is the wavelength.
+
+That just about wraps up value noise. The only other possible change is to use octaves and summing up noise from different octaves to create a more detailed terrain.
 
 \subsection{Fractal Noise}
 
