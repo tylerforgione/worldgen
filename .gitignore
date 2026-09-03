@@ -26,3 +26,24 @@ output/*
 # Coverage
 .coverage
 htmlcov/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+
+# Temporary LaTeX files
+*.bak
+*.tmp
+*.xdv

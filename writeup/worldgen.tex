@@ -1,0 +1,123 @@
+\documentclass[11pt]{article}
+
+% Page layout
+\usepackage[margin=1in]{geometry}
+
+% Math
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+% Figures
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{float}
+
+% Tables
+\usepackage{booktabs}
+
+% Links
+\usepackage{hyperref}
+
+% Better typography
+\usepackage{microtype}
+
+% Optional code listings
+\usepackage{xcolor}
+\usepackage{listings}
+
+\definecolor{codebackground}{RGB}{245, 245, 245}
+\definecolor{codeborder}{RGB}{210, 210, 210}
+\definecolor{codecomment}{RGB}{80, 130, 80}
+\definecolor{codekeyword}{RGB}{40, 80, 160}
+\definecolor{codestring}{RGB}{160, 70, 70}
+
+\lstdefinestyle{python}{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    backgroundcolor=\color{codebackground},
+    frame=single,
+    rulecolor=\color{codeborder},
+    keywordstyle=\color{codekeyword},
+    commentstyle=\color{codecomment},
+    stringstyle=\color{codestring},
+    showstringspaces=false,
+    breaklines=true,
+    columns=fullflexible,
+    keepspaces=true,
+    tabsize=4,
+    xleftmargin=0.5em,
+    xrightmargin=0.5em,
+    framexleftmargin=0.5em,
+    framexrightmargin=0.5em,
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    frame=single,
+    breaklines=true,
+    columns=fullflexible
+}
+
+\title{Learning Procedural World Generation}
+\author{Tyler Forgione}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\section{Introduction}
+
+This document records my progress while learning procedural world generation, including the algorithms, design decisions, experiments, and results developed throughout the project.
+
+\section{Noise Generation}
+
+A common way to generate a 2D map or terrain is to use noise. We often think of noise as a random signal. We think of static on a Television screen when the cable goes out. That is a very specific kind of noise, called white noise.
+
+\subsection{White Noise}
+
+In 2D, white noise is a grid in which each cell has a random intensity, generally between 0 and 1. The result is a mess of white and black dots on a map that means little. We can create white noise very easily by randomly sampling values in [0, 1] and assigning them to cells on a grid. Below is a Python implementation of white noise using NumPy:
+
+\begin{lstlisting}[style=python]
+def white_noise(height, width, seed):
+    rng = np.random.default_rng(seed)
+    return rng.random(size=(height, width), dtype=np.float32)
+\end{lstlisting}
+
+This results in an output like that in Figure \ref{fig:white-noise}. As is obvious, this is completely random! There is no meaning behind the colour of any dot. If we were to map this in 3D, we'd get mountains with essentially $90\deg$ angles with the ground below them. There would be no slope to any hill, mountain, or valley. To show this, I've plotted the exact same noise map in 3D. Figure \ref{fig:white-noise-3d} shows the terrain we'd get if only using white noise in our generation.
+
+\begin{figure}[htbp]
+    \centering
+
+    \begin{subfigure}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/whitenoise.png}
+        \caption{White noise}
+        \label{fig:white-noise}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{images/whitenoise_3d.png}
+        \caption{White noise plotted in 3D}
+        \label{fig:value-noise}
+    \end{subfigure}
+
+    \caption{White noise in 2D and 3D}
+    \label{fig:white-noise-3d}
+\end{figure}
+
+\subsection{Value Noise}
+
+\subsection{Fractal Noise}
+
+\section{Terrain Generation}
+
+\subsection{Heightmaps}
+
+\section{Experiments}
+
+\section{Notes and Future Work}
+
+\end{document}
