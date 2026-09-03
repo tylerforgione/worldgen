@@ -1,4 +1,5 @@
 import numpy as np
+import taichi as ti
 
 
 def generate_white_noise(width: int, height: int, seed: int) -> np.ndarray:
@@ -20,7 +21,8 @@ def generate_white_noise(width: int, height: int, seed: int) -> np.ndarray:
     return rng.random(size=(height, width), dtype=np.float32)
 
 
-def lerp(v0: float, v1: float, t: float):
+@ti.func
+def lerp(v0, v1, t):
     """
     Linearly interpolate between two values.
 
@@ -35,7 +37,8 @@ def lerp(v0: float, v1: float, t: float):
     return v0 + t * (v1 - v0)
 
 
-def smoothstep(t: float):
+@ti.func
+def smoothstep(t):
     """
     Apply cubic Hermite smoothing to an interpolation factor.
 
@@ -48,7 +51,52 @@ def smoothstep(t: float):
     Returns:
         The smoothed interpolation factor.
     """
-    return (3 * t**2) - (2 * t**3)
+    return 3.0 * t * t - 2.0 * t * t * t
+
+
+@ti.kernel
+def generate_value_noise_kernel(
+    grid: ti.types.ndarray(dtype=ti.f32, ndim=2),
+    output: ti.types.ndarray(dtype=ti.f32, ndim=2),
+    wavelength: ti.f32,
+):
+    for Y, X in output:
+        sample_x = X / wavelength
+        sample_y = Y / wavelength
+
+        cell_x = ti.cast(ti.floor(sample_x), ti.int32)
+        cell_y = ti.cast(ti.floor(sample_y), ti.int32)
+
+        top_left = grid[cell_y, cell_x]
+        top_right = grid[cell_y, cell_x + 1]
+        bottom_left = grid[cell_y + 1, cell_x]
+        bottom_right = grid[cell_y + 1, cell_x + 1]
+
+        tx = sample_x - cell_x
+        ty = sample_y - cell_y
+
+        smooth_tx = smoothstep(t=tx)
+        smooth_ty = smoothstep(t=ty)
+
+        top = lerp(
+            v0=top_left,
+            v1=top_right,
+            t=smooth_tx,
+        )
+
+        bottom = lerp(
+            v0=bottom_left,
+            v1=bottom_right,
+            t=smooth_tx,
+        )
+
+        value = lerp(
+            v0=top,
+            v1=bottom,
+            t=smooth_ty,
+        )
+
+        output[Y, X] = value
 
 
 def generate_value_noise(
@@ -90,45 +138,7 @@ def generate_value_noise(
         dtype=np.float32,
     )
 
-    for Y in range(height):
-        for X in range(width):
-            sample_x = X / wavelength
-            sample_y = Y / wavelength
-
-            cell_x = int(np.floor(sample_x))
-            cell_y = int(np.floor(sample_y))
-
-            top_left = grid[cell_y, cell_x]
-            top_right = grid[cell_y, cell_x + 1]
-            bottom_left = grid[cell_y + 1, cell_x]
-            bottom_right = grid[cell_y + 1, cell_x + 1]
-
-            tx = sample_x - cell_x
-            ty = sample_y - cell_y
-
-            smooth_tx = smoothstep(t=tx)
-            smooth_ty = smoothstep(t=ty)
-
-            top = lerp(
-                v0=top_left,
-                v1=top_right,
-                t=smooth_tx,
-            )
-
-            bottom = lerp(
-                v0=bottom_left,
-                v1=bottom_right,
-                t=smooth_tx,
-            )
-
-            value = lerp(
-                v0=top,
-                v1=bottom,
-                t=smooth_ty,
-            )
-
-            output[Y, X] = value
-
+    generate_value_noise_kernel(grid=grid, output=output, wavelength=wavelength)
     return output
 
 
