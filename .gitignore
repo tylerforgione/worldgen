@@ -47,3 +47,6 @@ htmlcov/
 *.bak
 *.tmp
 *.xdv
+
+# scratch files
+.work/
