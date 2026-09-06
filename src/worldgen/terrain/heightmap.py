@@ -18,7 +18,9 @@ def generate_continental_mask_kernel(
 
         distance = ti.sqrt(x_norm * x_norm + y_norm * y_norm)
 
-        continental_mask = ti.math.clamp(1.0 - distance, 0.0, 1.0)
+        # continental_mask = ti.math.clamp(1.0 - distance, 0.0, 1.0)
+
+        continental_mask = ti.math.clamp(1.0 - distance, 0.0, 1.0) ** 2
 
         output[y, x] = continental_mask
 

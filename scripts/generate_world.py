@@ -13,16 +13,16 @@ heightmap = generate_heightmap(
     height=2048,
     seed=3982,
     wavelength=256,
-    octaves=4,
-    redistribution=4.0,
+    octaves=6,
+    redistribution=3.0,
 )
-
-land_mask = generate_land_mask(heightmap=heightmap, sea_level=0.3)
 
 continental_mask = generate_continental_mask(
     width=heightmap.shape[1], height=heightmap.shape[0]
 )
 
-plot_heightmap_3d(heightmap=continental_mask)
-plot_heightmap_3d(heightmap=land_mask)
 plot_heightmap_3d(heightmap=heightmap)
+
+shaped_heightmap = heightmap * continental_mask
+
+plot_heightmap_3d(heightmap=shaped_heightmap)
