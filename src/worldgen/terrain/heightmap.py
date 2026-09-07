@@ -20,7 +20,7 @@ def generate_continental_mask_kernel(
 
         # continental_mask = ti.math.clamp(1.0 - distance, 0.0, 1.0)
 
-        continental_mask = ti.math.clamp(1.0 - distance**4.0, 0.0, 1.0) ** 2
+        continental_mask = ti.math.clamp(1.0 - distance**4.0, 0.0, 1.0)
 
         output[y, x] = continental_mask
 
