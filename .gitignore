@@ -50,3 +50,5 @@ htmlcov/
 
 # scratch files
 .work/
+
+settings.json

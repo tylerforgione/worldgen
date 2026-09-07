@@ -10,7 +10,8 @@ def generate_land_mask(heightmap: np.ndarray, sea_level: float) -> np.ndarray:
 
 @ti.kernel
 def generate_continental_mask_kernel(
-    width: ti.int32, height: ti.int32, output: ti.types.ndarray(dtype=ti.f32, ndim=2)
+    width: ti.int32, height: ti.int32, output: ti.types.ndarray(dtype=ti.f32, ndim=2),
+    falloff_power: ti.f32,
 ):
     for y, x in output:
         x_norm = 2.0 * x / (width - 1) - 1.0
@@ -20,15 +21,17 @@ def generate_continental_mask_kernel(
 
         # continental_mask = ti.math.clamp(1.0 - distance, 0.0, 1.0)
 
-        continental_mask = ti.math.clamp(1.0 - distance**4.0, 0.0, 1.0)
+        continental_mask = ti.math.clamp(1.0 - distance**falloff_power, 0.0, 1.0)
 
         output[y, x] = continental_mask
 
 
-def generate_continental_mask(width: int, height: int) -> np.ndarray:
+def generate_continental_mask(width: int, height: int, falloff_power: float = 4.0) -> np.ndarray:
     output = np.zeros(shape=(height, width), dtype=np.float32)
 
-    generate_continental_mask_kernel(width=width, height=height, output=output)
+    generate_continental_mask_kernel(
+        width=width, height=height, output=output, falloff_power=falloff_power
+    )
 
     return output
 
@@ -40,6 +43,8 @@ def generate_heightmap(
     wavelength: float,
     octaves: int,
     redistribution: float = 1.0,
+    persistence: float = 0.25,
+    lacunarity: float = 1.5,
 ) -> np.ndarray:
     noise = generate_fractal_noise(
         width=width,
@@ -47,8 +52,8 @@ def generate_heightmap(
         seed=seed,
         wavelength=wavelength,
         octaves=octaves,
-        persistence=0.25,
-        lacunarity=1.5,
+        persistence=persistence,
+        lacunarity=lacunarity,
     )
 
     elevation = noise**redistribution
