@@ -19,6 +19,9 @@ class SettingsTests(unittest.TestCase):
             ("octaves", "0"), ("wavelength", "0.5"),
             ("persistence", "nan"), ("lacunarity", "0"),
             ("redistribution", "inf"), ("sea_level", "2"),
+            ("region_seed", "-1"), ("region_wavelength", "0"),
+            ("lower_thresh", "0.7"), ("lower_thresh", "0.8"),
+            ("upper_thresh", "nan"),
         ):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 parse_settings({**defaults, name: value})
@@ -35,7 +38,7 @@ class GuiTests(unittest.TestCase):
             app.poll()  # Polling while idle should be harmless.
             self.assertIsNone(app.poll_id)
             for name, value in {"width": 48, "height": 32, "wavelength": 16,
-                                "octaves": 4}.items():
+                                "octaves": 4, "region_wavelength": 16}.items():
                 app.variables[name].set(str(value))
             with patch("worldgen.gui.messagebox.showerror") as show_error:
                 app.generate()
@@ -48,6 +51,13 @@ class GuiTests(unittest.TestCase):
                 self.assertTrue((result[4] <= result[3]).all())
                 np.testing.assert_array_equal(result[4][0], 0)
                 np.testing.assert_array_equal(result[5], result[4] > 0.1)
+                self.assertEqual(result[8].shape, (32, 48))
+                self.assertTrue(np.isfinite(result[8]).all())
+                self.assertTrue(((result[8] >= 0) & (result[8] <= 1)).all())
+                self.assertGreater(float(np.ptp(result[8])), 0)
+                np.testing.assert_array_equal(
+                    app.views[3][0].axes[0].images[0].get_array(), result[8]
+                )
                 expected = app.worker.submit(
                     generate_fractal_noise, 48, 32, 1, 16, 4, 0.25, 1.5
                 ).result() ** 3.0
@@ -64,6 +74,7 @@ class GuiTests(unittest.TestCase):
                 self.wait_for_preview(root, app)
                 second = second_future.result()
                 np.testing.assert_array_equal(second[3], second[4])
+                np.testing.assert_array_equal(second[8], result[8])
                 self.assertFalse(np.allclose(result[3], second[3]))
                 expected = app.worker.submit(
                     generate_fractal_noise, 48, 32, 1, 16, 4, 0.8, 2.0

@@ -16,6 +16,7 @@ from worldgen.terrain.heightmap import (
     generate_continental_mask,
     generate_heightmap,
     generate_land_mask,
+    generate_region_mask,
 )
 
 # name, label, default, type, minimum, maximum
@@ -31,6 +32,10 @@ FIELDS = (
     ("falloff_power", "Continental falloff power", 4.0, float, 0.01, 100),
     ("sea_level", "Sea level", 0.1, float, 0, 1),
     ("vertical_scale", "3D vertical scale", 100.0, float, 0.01, 1_000_000),
+    ("region_seed", "Region seed", 3982, int, 0, 2**32 - 1),
+    ("region_wavelength", "Region wavelength (samples)", 1024, float, 1, 1_000_000),
+    ("lower_thresh", "Region lower threshold", 0.3, float, 0, 1),
+    ("upper_thresh", "Region upper threshold", 0.7, float, 0, 1),
 )
 
 
@@ -46,6 +51,10 @@ def parse_settings(values):
         if not math.isfinite(value) or not minimum <= value <= maximum:
             raise ValueError(f"{label} must be between {minimum:g} and {maximum:g}.")
         settings[name] = value
+    if settings["lower_thresh"] >= settings["upper_thresh"]:
+        raise ValueError(
+            "Region lower threshold must be less than the upper threshold."
+        )
     return settings
 
 
@@ -103,7 +112,7 @@ class WorldGenerator:
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(0, 12), pady=12)
         self.views = []
-        for title in ("Terrain", "Before shaping", "Land mask"):
+        for title in ("Terrain", "Before shaping", "Land mask", "Region mask"):
             frame = ttk.Frame(self.tabs)
             self.tabs.add(frame, text=title)
             figure = Figure(figsize=(6, 5), layout="constrained")
@@ -174,6 +183,14 @@ class WorldGenerator:
                 settings["width"], settings["height"], settings["falloff_power"]
             )
         land = generate_land_mask(heightmap, settings["sea_level"])
+        regions = generate_region_mask(
+            width=settings["width"],
+            height=settings["height"],
+            seed=settings["region_seed"],
+            wavelength=settings["region_wavelength"],
+            lower_thresh=settings["lower_thresh"],
+            upper_thresh=settings["upper_thresh"],
+        )
         return (
             settings,
             xs,
@@ -183,6 +200,7 @@ class WorldGenerator:
             land[np.ix_(ys, xs)],
             float(land.mean()),
             perf_counter() - start,
+            regions[np.ix_(ys, xs)],
         )
 
     def poll(self):
@@ -207,26 +225,34 @@ class WorldGenerator:
             self.generate_button.state(["!disabled"])
 
     def show_preview(self, result):
-        settings, xs, ys, before, terrain, land, land_fraction, seconds = result
+        settings, xs, ys, before, terrain, land, land_fraction, seconds, regions = (
+            result
+        )
         x, y = np.meshgrid(xs, ys)
         for (figure, canvas), data, title in zip(
             self.views,
-            (terrain, before, land),
-            ("Terrain", "Before shaping", "Land mask"),
+            (terrain, before, land, regions),
+            ("Terrain", "Before shaping", "Land mask", "Region mask"),
         ):
             figure.clear()
-            if title == "Land mask":
+            if title in ("Land mask", "Region mask"):
                 axes = figure.add_subplot(111)
-                axes.imshow(
+                preview = axes.imshow(
                     data,
                     origin="lower",
-                    cmap="Blues_r",
+                    cmap="gray" if title == "Region mask" else "Blues_r",
                     vmin=0,
                     vmax=1,
                     extent=(0, settings["width"] - 1, 0, settings["height"] - 1),
                     interpolation="nearest",
                 )
-                axes.set_title("Land (light) / water (dark)")
+                if title == "Region mask":
+                    axes.set_title(
+                        "Plains (dark) / mountains (light)\nRegion weights — preview only"
+                    )
+                    figure.colorbar(preview, ax=axes, label="Mountain weight")
+                else:
+                    axes.set_title("Land (light) / water (dark)")
             else:
                 axes = figure.add_subplot(111, projection="3d")
                 axes.plot_surface(
