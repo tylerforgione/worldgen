@@ -7,7 +7,8 @@ from time import perf_counter
 from tkinter import messagebox, ttk
 
 import numpy as np
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends._backend_tk import NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from worldgen.compute import initialize_compute
@@ -186,14 +187,20 @@ class WorldGenerator:
 
     def poll(self):
         self.poll_id = None
-        if not self.future.done():
+        future = self.future
+        if future is None:
+            return
+        if not future.done():
             self.poll_id = self.root.after(100, self.poll)
             return
         try:
-            self.show_preview(self.future.result())
-        except Exception as error:
-            self.status.set("Generation failed. Adjust settings and try again.")
-            messagebox.showerror("Generation failed", str(error), parent=self.root)
+            # The worker records generation errors on its completed future.
+            error = future.exception()
+            if error is not None:
+                self.status.set("Generation failed. Adjust settings and try again.")
+                messagebox.showerror("Generation failed", str(error), parent=self.root)
+            else:
+                self.show_preview(future.result())
         finally:
             self.future = None
             self.progress.stop()

@@ -32,6 +32,8 @@ class GuiTests(unittest.TestCase):
         errors = []
         root.report_callback_exception = lambda *args: errors.append(args)
         try:
+            app.poll()  # Polling while idle should be harmless.
+            self.assertIsNone(app.poll_id)
             for name, value in {"width": 48, "height": 32, "wavelength": 16,
                                 "octaves": 4}.items():
                 app.variables[name].set(str(value))
