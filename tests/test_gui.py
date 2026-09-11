@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import numpy as np
 
+from worldgen.compute import initialize_compute
 from worldgen.gui import FIELDS, SECTIONS, WorldGenerator, parse_settings, random_settings
 from worldgen.terrain.heightmap import generate_plains, generate_mountains
 from worldgen.terrain.noise import generate_fractal_noise
@@ -44,6 +45,7 @@ class SettingsTests(unittest.TestCase):
 
 class GuiTests(unittest.TestCase):
     def test_generation_controls_and_recovery(self):
+        initialize_compute()
         root = tk.Tk()
         root.withdraw()
         app = WorldGenerator(root)
@@ -80,15 +82,13 @@ class GuiTests(unittest.TestCase):
                 np.testing.assert_array_equal(
                     app.views[3][0].axes[0].images[0].get_array(), result[8]
                 )
-                expected = app.worker.submit(
-                    generate_fractal_noise, 48, 32, 1, 16, 4, 0.25, 1.5
-                ).result() ** 3.0
+                expected = generate_fractal_noise(48, 32, 1, 16, 4, 0.25, 1.5) ** 3.0
                 np.testing.assert_allclose(result[3], expected)
                 for index, generator, width, height, seed, variation in (
                     (0, generate_plains, 24, 16, 1, 0.05),
                     (1, generate_mountains, 20, 28, 2, 0.6),
                 ):
-                    expected = app.worker.submit(generator, width, height, seed, 8, 0.2, variation).result()
+                    expected = generator(width, height, seed, 8, 0.2, variation)
                     np.testing.assert_allclose(result[9][index][2], expected)
                     self.assertEqual(len(app.views[4 + index][0].axes), 1)
                 self.assertEqual(len(app.views[0][0].axes), 1)
@@ -105,9 +105,7 @@ class GuiTests(unittest.TestCase):
                 np.testing.assert_array_equal(second[3], second[4])
                 np.testing.assert_array_equal(second[8], result[8])
                 self.assertFalse(np.allclose(result[3], second[3]))
-                expected = app.worker.submit(
-                    generate_fractal_noise, 48, 32, 1, 16, 4, 0.8, 2.0
-                ).result() ** 3.0
+                expected = generate_fractal_noise(48, 32, 1, 16, 4, 0.8, 2.0) ** 3.0
                 np.testing.assert_allclose(second[3], expected)
 
                 with patch.object(app, "build_preview", side_effect=RuntimeError("test error")):

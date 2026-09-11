@@ -3,7 +3,7 @@
 import math
 import random
 import tkinter as tk
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future
 from time import perf_counter
 from tkinter import messagebox, ttk
 
@@ -17,9 +17,9 @@ from worldgen.terrain.heightmap import (
     generate_continental_mask,
     generate_heightmap,
     generate_land_mask,
-    generate_region_mask,
-    generate_plains,
     generate_mountains,
+    generate_plains,
+    generate_region_mask,
 )
 
 # name, label, default, type, minimum, maximum
@@ -56,8 +56,16 @@ FIELDS += tuple(
 )
 
 SECTIONS = {
-    "Main noise": ("width", "height", "seed", "wavelength", "octaves",
-                   "persistence", "lacunarity", "redistribution"),
+    "Main noise": (
+        "width",
+        "height",
+        "seed",
+        "wavelength",
+        "octaves",
+        "persistence",
+        "lacunarity",
+        "redistribution",
+    ),
     "Continental mask": ("falloff_power",),
     "Land mask": ("sea_level",),
     "Region mask": ("region_seed", "region_wavelength", "lower_thresh", "upper_thresh"),
@@ -65,7 +73,14 @@ SECTIONS = {
     "Mountains": tuple(name for name, *_ in FIELDS if name.startswith("mountains_")),
     "Display": ("vertical_scale",),
 }
-VIEW_TITLES = ("Terrain", "Before shaping", "Land mask", "Region mask", "Plains", "Mountains")
+VIEW_TITLES = (
+    "Terrain",
+    "Before shaping",
+    "Land mask",
+    "Region mask",
+    "Plains",
+    "Mountains",
+)
 
 
 def random_settings(rng=None):
@@ -78,13 +93,15 @@ def random_settings(rng=None):
         values[prefix + "seed"] = rng.randrange(2**32)
         values[prefix + "wavelength"] = size / rng.choice((2, 4, 8))
     values.update(
-        octaves=rng.randint(3, 6), persistence=round(rng.uniform(0.2, 0.65), 3),
+        octaves=rng.randint(3, 6),
+        persistence=round(rng.uniform(0.2, 0.65), 3),
         lacunarity=round(rng.uniform(1.3, 2.0), 3),
         redistribution=round(rng.uniform(1, 4), 2),
         falloff_power=round(rng.uniform(2, 8), 2),
         sea_level=round(rng.uniform(0.05, 0.3), 3),
         vertical_scale=rng.choice((25, 50, 100, 150)),
-        region_seed=rng.randrange(2**32), region_wavelength=size / rng.choice((2, 4)),
+        region_seed=rng.randrange(2**32),
+        region_wavelength=size / rng.choice((2, 4)),
         lower_thresh=round(rng.uniform(0.15, 0.45), 3),
         upper_thresh=round(rng.uniform(0.55, 0.85), 3),
         plains_base_elevation=round(rng.uniform(0.1, 0.3), 3),
@@ -93,6 +110,7 @@ def random_settings(rng=None):
         mountains_elevation_variation=round(rng.uniform(0.35, 0.7), 3),
     )
     return parse_settings(values)
+
 
 def parse_settings(values):
     """Reject invalid values before allocating arrays or running kernels."""
@@ -116,8 +134,6 @@ def parse_settings(values):
 class WorldGenerator:
     def __init__(self, root):
         self.root = root
-        self.worker = ThreadPoolExecutor(max_workers=1)
-        self.compute_ready = False
         self.future = None
         self.poll_id = None
         self.variables = {}
@@ -134,8 +150,13 @@ class WorldGenerator:
             controls, text="World generation", font=("Segoe UI", 14, "bold")
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
         self.section = tk.StringVar(value="Main noise")
-        selector = ttk.Combobox(controls, textvariable=self.section,
-                               values=tuple(SECTIONS), state="readonly", width=28)
+        selector = ttk.Combobox(
+            controls,
+            textvariable=self.section,
+            values=tuple(SECTIONS),
+            state="readonly",
+            width=28,
+        )
         selector.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         section_host = ttk.Frame(controls)
         section_host.grid(row=2, column=0, columnspan=2, sticky="nsew")
@@ -151,18 +172,25 @@ class WorldGenerator:
                 self.variables[name] = variable
                 ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=5)
                 ttk.Entry(frame, textvariable=variable, width=12).grid(
-                    row=row, column=1, padx=(12, 0), pady=5)
+                    row=row, column=1, padx=(12, 0), pady=5
+                )
             if title in ("Continental mask", "Land mask", "Region mask"):
                 ttk.Label(frame, text="Uses main noise width and height.").grid(
-                    row=len(names), column=0, columnspan=2, sticky="w", pady=8)
+                    row=len(names), column=0, columnspan=2, sticky="w", pady=8
+                )
             if title in ("Plains", "Mountains"):
                 ttk.Label(frame, text="Independent terrain preview.").grid(
-                    row=len(names), column=0, columnspan=2, sticky="w", pady=8)
+                    row=len(names), column=0, columnspan=2, sticky="w", pady=8
+                )
         ttk.Checkbutton(
             self.section_frames["Continental mask"],
-            text="Apply to main terrain", variable=self.continental
+            text="Apply to main terrain",
+            variable=self.continental,
         ).grid(row=2, column=0, columnspan=2, sticky="w", pady=10)
-        selector.bind("<<ComboboxSelected>>", lambda event: self.section_frames[self.section.get()].tkraise())
+        selector.bind(
+            "<<ComboboxSelected>>",
+            lambda event: self.section_frames[self.section.get()].tkraise(),
+        )
         self.section_frames["Main noise"].tkraise()
         row = 3
         self.generate_button = ttk.Button(
@@ -172,7 +200,9 @@ class WorldGenerator:
         ttk.Button(controls, text="Reset settings", command=self.reset).grid(
             row=row + 1, column=1, sticky="ew", padx=(12, 0)
         )
-        self.random_button = ttk.Button(controls, text="Random parameters", command=self.randomize)
+        self.random_button = ttk.Button(
+            controls, text="Random parameters", command=self.randomize
+        )
         self.random_button.grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)
         self.progress = ttk.Progressbar(controls, mode="indeterminate")
         self.progress.grid(row=row + 2, column=0, columnspan=2, sticky="ew", pady=8)
@@ -232,15 +262,22 @@ class WorldGenerator:
         self.generate_button.state(["disabled"])
         self.status.set("Generating... First run includes kernel compilation.")
         self.progress.start(12)
-        self.future = self.worker.submit(self.build_preview, settings)
-        self.poll_id = self.root.after(100, self.poll)
+        self.future = Future()
+        self.poll_id = self.root.after_idle(self.run_generation, settings, self.future)
+
+    def run_generation(self, settings, future):
+        """Run Taichi work on the thread that initialized its runtime."""
+        self.poll_id = None
+        if future.cancelled():
+            return
+        try:
+            future.set_result(self.build_preview(settings))
+        except Exception as error:
+            future.set_exception(error)
+        self.poll()
 
     def build_preview(self, settings):
-        # Taichi stays on one worker; Tk and Matplotlib stay on the UI thread.
         start = perf_counter()
-        if not self.compute_ready:
-            initialize_compute()
-            self.compute_ready = True
         heightmap = generate_heightmap(
             **{
                 name: settings[name]
@@ -277,11 +314,23 @@ class WorldGenerator:
             upper_thresh=settings["upper_thresh"],
         )
         terrain_previews = []
-        for prefix, generator in (("plains", generate_plains), ("mountains", generate_mountains)):
-            data = generator(**{
-                name: settings[f"{prefix}_{name}"]
-                for name in ("width", "height", "seed", "wavelength", "base_elevation", "elevation_variation")
-            })
+        for prefix, generator in (
+            ("plains", generate_plains),
+            ("mountains", generate_mountains),
+        ):
+            data = generator(
+                **{
+                    name: settings[f"{prefix}_{name}"]
+                    for name in (
+                        "width",
+                        "height",
+                        "seed",
+                        "wavelength",
+                        "base_elevation",
+                        "elevation_variation",
+                    )
+                }
+            )
             px = np.linspace(0, data.shape[1] - 1, min(128, data.shape[1]), dtype=int)
             py = np.linspace(0, data.shape[0] - 1, min(128, data.shape[0]), dtype=int)
             terrain_previews.append((px, py, data[np.ix_(py, px)]))
@@ -321,9 +370,18 @@ class WorldGenerator:
             self.generate_button.state(["!disabled"])
 
     def show_preview(self, result):
-        settings, xs, ys, before, terrain, land, land_fraction, seconds, regions, extra = (
-            result
-        )
+        (
+            settings,
+            xs,
+            ys,
+            before,
+            terrain,
+            land,
+            land_fraction,
+            seconds,
+            regions,
+            extra,
+        ) = result
         x, y = np.meshgrid(xs, ys)
         for (figure, canvas), data, title in zip(
             self.views,
@@ -379,11 +437,13 @@ class WorldGenerator:
     def close(self):
         if self.poll_id is not None:
             self.root.after_cancel(self.poll_id)
-        self.worker.shutdown(wait=False, cancel_futures=True)
+        if self.future is not None:
+            self.future.cancel()
         self.root.destroy()
 
 
 def main():
+    initialize_compute()
     root = tk.Tk()
     WorldGenerator(root)
     root.mainloop()
