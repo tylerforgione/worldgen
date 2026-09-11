@@ -1,17 +1,32 @@
 """Run with python -m unittest discover -s tests."""
 
 import time
+import random
 import tkinter as tk
 import unittest
 from unittest.mock import patch
 
 import numpy as np
 
-from worldgen.gui import FIELDS, WorldGenerator, parse_settings
+from worldgen.gui import FIELDS, SECTIONS, WorldGenerator, parse_settings, random_settings
+from worldgen.terrain.heightmap import generate_plains, generate_mountains
 from worldgen.terrain.noise import generate_fractal_noise
 
 
 class SettingsTests(unittest.TestCase):
+    def test_random_settings_are_valid_and_square(self):
+        samples = [random_settings(random.Random(seed)) for seed in range(100)]
+        for values in samples:
+            self.assertEqual(parse_settings({k: str(v) for k, v in values.items()}), values)
+            for prefix in ("", "plains_", "mountains_"):
+                self.assertEqual(values[prefix + "width"], values[prefix + "height"])
+                self.assertEqual(values[prefix + "width"], values["width"])
+            self.assertLess(values["lower_thresh"], values["upper_thresh"])
+        for name, *_ in FIELDS:
+            self.assertGreater(len({values[name] for values in samples}), 1, name)
+        grouped = [name for names in SECTIONS.values() for name in names]
+        self.assertCountEqual(grouped, [name for name, *_ in FIELDS])
+
     def test_invalid_settings(self):
         defaults = {name: str(default) for name, _, default, *_ in FIELDS}
         for name, value in (
@@ -35,10 +50,17 @@ class GuiTests(unittest.TestCase):
         errors = []
         root.report_callback_exception = lambda *args: errors.append(args)
         try:
+            app.random_button.invoke()
+            randomized = parse_settings({name: var.get() for name, var in app.variables.items()})
+            self.assertEqual(randomized["width"], randomized["height"])
+            app.reset()
             app.poll()  # Polling while idle should be harmless.
             self.assertIsNone(app.poll_id)
             for name, value in {"width": 48, "height": 32, "wavelength": 16,
-                                "octaves": 4, "region_wavelength": 16}.items():
+                                "octaves": 4, "region_wavelength": 16,
+                                "plains_width": 24, "plains_height": 16,
+                                "mountains_width": 20, "mountains_height": 28,
+                                "plains_wavelength": 8, "mountains_wavelength": 8}.items():
                 app.variables[name].set(str(value))
             with patch("worldgen.gui.messagebox.showerror") as show_error:
                 app.generate()
@@ -62,6 +84,13 @@ class GuiTests(unittest.TestCase):
                     generate_fractal_noise, 48, 32, 1, 16, 4, 0.25, 1.5
                 ).result() ** 3.0
                 np.testing.assert_allclose(result[3], expected)
+                for index, generator, width, height, seed, variation in (
+                    (0, generate_plains, 24, 16, 1, 0.05),
+                    (1, generate_mountains, 20, 28, 2, 0.6),
+                ):
+                    expected = app.worker.submit(generator, width, height, seed, 8, 0.2, variation).result()
+                    np.testing.assert_allclose(result[9][index][2], expected)
+                    self.assertEqual(len(app.views[4 + index][0].axes), 1)
                 self.assertEqual(len(app.views[0][0].axes), 1)
                 self.assertFalse(errors)
                 show_error.assert_not_called()

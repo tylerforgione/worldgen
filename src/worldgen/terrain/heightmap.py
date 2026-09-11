@@ -86,6 +86,42 @@ def generate_region_mask(
     return weights
 
 
+def generate_plains(
+    width: int,
+    height: int,
+    seed: int,
+    wavelength: float,
+    base_elevation: float = 0.2,
+    elevation_variation: float = 0.05,
+) -> np.ndarray:
+    noise = generate_value_noise(
+        width=width, height=height, seed=seed, wavelength=wavelength
+    )
+
+    plains = base_elevation + elevation_variation * noise
+
+    return plains
+
+
+def generate_mountains(
+    width: int,
+    height: int,
+    seed: int,
+    wavelength: float,
+    base_elevation: float = 0.2,
+    elevation_variation: float = 0.6,
+) -> np.ndarray:
+    noise = generate_value_noise(
+        width=width, height=height, seed=seed, wavelength=wavelength
+    )
+
+    ridges = 1 - np.abs((2 * noise) - 1)
+
+    mountains = base_elevation + elevation_variation * ridges
+
+    return mountains
+
+
 def generate_heightmap(
     width: int,
     height: int,

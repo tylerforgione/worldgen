@@ -1,6 +1,7 @@
 """Small desktop controls for the existing terrain generator."""
 
 import math
+import random
 import tkinter as tk
 from concurrent.futures import ThreadPoolExecutor
 from time import perf_counter
@@ -17,6 +18,8 @@ from worldgen.terrain.heightmap import (
     generate_heightmap,
     generate_land_mask,
     generate_region_mask,
+    generate_plains,
+    generate_mountains,
 )
 
 # name, label, default, type, minimum, maximum
@@ -38,6 +41,58 @@ FIELDS = (
     ("upper_thresh", "Region upper threshold", 0.7, float, 0, 1),
 )
 
+
+FIELDS += tuple(
+    (f"{prefix}_{name}", label, default, kind, minimum, maximum)
+    for prefix, variation in (("plains", 0.05), ("mountains", 0.6))
+    for name, label, default, kind, minimum, maximum in (
+        ("width", "Width (samples)", 4096, int, 2, 8192),
+        ("height", "Height (samples)", 4096, int, 2, 8192),
+        ("seed", "Seed", 1 if prefix == "plains" else 2, int, 0, 2**32 - 1),
+        ("wavelength", "Wavelength (samples)", 1024, float, 1, 1_000_000),
+        ("base_elevation", "Base elevation", 0.2, float, 0, 1),
+        ("elevation_variation", "Elevation variation", variation, float, 0, 1),
+    )
+)
+
+SECTIONS = {
+    "Main noise": ("width", "height", "seed", "wavelength", "octaves",
+                   "persistence", "lacunarity", "redistribution"),
+    "Continental mask": ("falloff_power",),
+    "Land mask": ("sea_level",),
+    "Region mask": ("region_seed", "region_wavelength", "lower_thresh", "upper_thresh"),
+    "Plains": tuple(name for name, *_ in FIELDS if name.startswith("plains_")),
+    "Mountains": tuple(name for name, *_ in FIELDS if name.startswith("mountains_")),
+    "Display": ("vertical_scale",),
+}
+VIEW_TITLES = ("Terrain", "Before shaping", "Land mask", "Region mask", "Plains", "Mountains")
+
+
+def random_settings(rng=None):
+    """Choose bounded experiment settings with matching square dimensions."""
+    rng = rng or random.Random()
+    values = {name: default for name, _, default, *_ in FIELDS}
+    size = rng.choice((128, 256, 512))
+    for prefix in ("", "plains_", "mountains_"):
+        values[prefix + "width"] = values[prefix + "height"] = size
+        values[prefix + "seed"] = rng.randrange(2**32)
+        values[prefix + "wavelength"] = size / rng.choice((2, 4, 8))
+    values.update(
+        octaves=rng.randint(3, 6), persistence=round(rng.uniform(0.2, 0.65), 3),
+        lacunarity=round(rng.uniform(1.3, 2.0), 3),
+        redistribution=round(rng.uniform(1, 4), 2),
+        falloff_power=round(rng.uniform(2, 8), 2),
+        sea_level=round(rng.uniform(0.05, 0.3), 3),
+        vertical_scale=rng.choice((25, 50, 100, 150)),
+        region_seed=rng.randrange(2**32), region_wavelength=size / rng.choice((2, 4)),
+        lower_thresh=round(rng.uniform(0.15, 0.45), 3),
+        upper_thresh=round(rng.uniform(0.55, 0.85), 3),
+        plains_base_elevation=round(rng.uniform(0.1, 0.3), 3),
+        plains_elevation_variation=round(rng.uniform(0.02, 0.1), 3),
+        mountains_base_elevation=round(rng.uniform(0.1, 0.3), 3),
+        mountains_elevation_variation=round(rng.uniform(0.35, 0.7), 3),
+    )
+    return parse_settings(values)
 
 def parse_settings(values):
     """Reject invalid values before allocating arrays or running kernels."""
@@ -78,17 +133,38 @@ class WorldGenerator:
         ttk.Label(
             controls, text="World generation", font=("Segoe UI", 14, "bold")
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 12))
-        for row, (name, label, default, _, _, _) in enumerate(FIELDS, start=1):
-            variable = tk.StringVar(value=str(default))
-            self.variables[name] = variable
-            ttk.Label(controls, text=label).grid(row=row, column=0, sticky="w", pady=5)
-            ttk.Entry(controls, textvariable=variable, width=12).grid(
-                row=row, column=1, padx=(12, 0), pady=5
-            )
-        row = len(FIELDS) + 1
+        self.section = tk.StringVar(value="Main noise")
+        selector = ttk.Combobox(controls, textvariable=self.section,
+                               values=tuple(SECTIONS), state="readonly", width=28)
+        selector.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        section_host = ttk.Frame(controls)
+        section_host.grid(row=2, column=0, columnspan=2, sticky="nsew")
+        self.section_frames = {}
+        field_specs = {field[0]: field for field in FIELDS}
+        for title, names in SECTIONS.items():
+            frame = ttk.LabelFrame(section_host, text=title, padding=10)
+            frame.grid(row=0, column=0, sticky="nsew")
+            self.section_frames[title] = frame
+            for row, name in enumerate(names):
+                _, label, default, *_ = field_specs[name]
+                variable = tk.StringVar(value=str(default))
+                self.variables[name] = variable
+                ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=5)
+                ttk.Entry(frame, textvariable=variable, width=12).grid(
+                    row=row, column=1, padx=(12, 0), pady=5)
+            if title in ("Continental mask", "Land mask", "Region mask"):
+                ttk.Label(frame, text="Uses main noise width and height.").grid(
+                    row=len(names), column=0, columnspan=2, sticky="w", pady=8)
+            if title in ("Plains", "Mountains"):
+                ttk.Label(frame, text="Independent terrain preview.").grid(
+                    row=len(names), column=0, columnspan=2, sticky="w", pady=8)
         ttk.Checkbutton(
-            controls, text="Apply continental mask", variable=self.continental
-        ).grid(row=row, column=0, columnspan=2, sticky="w", pady=10)
+            self.section_frames["Continental mask"],
+            text="Apply to main terrain", variable=self.continental
+        ).grid(row=2, column=0, columnspan=2, sticky="w", pady=10)
+        selector.bind("<<ComboboxSelected>>", lambda event: self.section_frames[self.section.get()].tkraise())
+        self.section_frames["Main noise"].tkraise()
+        row = 3
         self.generate_button = ttk.Button(
             controls, text="Generate", command=self.generate
         )
@@ -96,6 +172,8 @@ class WorldGenerator:
         ttk.Button(controls, text="Reset settings", command=self.reset).grid(
             row=row + 1, column=1, sticky="ew", padx=(12, 0)
         )
+        self.random_button = ttk.Button(controls, text="Random parameters", command=self.randomize)
+        self.random_button.grid(row=row, column=0, columnspan=2, sticky="ew", pady=8)
         self.progress = ttk.Progressbar(controls, mode="indeterminate")
         self.progress.grid(row=row + 2, column=0, columnspan=2, sticky="ew", pady=8)
         ttk.Label(controls, textvariable=self.status, wraplength=280).grid(
@@ -112,7 +190,7 @@ class WorldGenerator:
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(0, 12), pady=12)
         self.views = []
-        for title in ("Terrain", "Before shaping", "Land mask", "Region mask"):
+        for title in VIEW_TITLES:
             frame = ttk.Frame(self.tabs)
             self.tabs.add(frame, text=title)
             figure = Figure(figsize=(6, 5), layout="constrained")
@@ -132,6 +210,13 @@ class WorldGenerator:
         for name, _, default, _, _, _ in FIELDS:
             self.variables[name].set(str(default))
         self.continental.set(True)
+
+    def randomize(self):
+        for name, value in random_settings().items():
+            self.variables[name].set(str(value))
+        self.continental.set(random.choice((True, False)))
+        if self.future is None:
+            self.status.set("Random parameters ready. Click Generate to preview.")
 
     def generate(self):
         if self.future is not None:
@@ -191,6 +276,16 @@ class WorldGenerator:
             lower_thresh=settings["lower_thresh"],
             upper_thresh=settings["upper_thresh"],
         )
+        terrain_previews = []
+        for prefix, generator in (("plains", generate_plains), ("mountains", generate_mountains)):
+            data = generator(**{
+                name: settings[f"{prefix}_{name}"]
+                for name in ("width", "height", "seed", "wavelength", "base_elevation", "elevation_variation")
+            })
+            px = np.linspace(0, data.shape[1] - 1, min(128, data.shape[1]), dtype=int)
+            py = np.linspace(0, data.shape[0] - 1, min(128, data.shape[0]), dtype=int)
+            terrain_previews.append((px, py, data[np.ix_(py, px)]))
+            del data
         return (
             settings,
             xs,
@@ -201,6 +296,7 @@ class WorldGenerator:
             float(land.mean()),
             perf_counter() - start,
             regions[np.ix_(ys, xs)],
+            terrain_previews,
         )
 
     def poll(self):
@@ -225,14 +321,14 @@ class WorldGenerator:
             self.generate_button.state(["!disabled"])
 
     def show_preview(self, result):
-        settings, xs, ys, before, terrain, land, land_fraction, seconds, regions = (
+        settings, xs, ys, before, terrain, land, land_fraction, seconds, regions, extra = (
             result
         )
         x, y = np.meshgrid(xs, ys)
         for (figure, canvas), data, title in zip(
             self.views,
-            (terrain, before, land, regions),
-            ("Terrain", "Before shaping", "Land mask", "Region mask"),
+            (terrain, before, land, regions, extra[0][2], extra[1][2]),
+            VIEW_TITLES,
         ):
             figure.clear()
             if title in ("Land mask", "Region mask"):
@@ -254,18 +350,22 @@ class WorldGenerator:
                 else:
                     axes.set_title("Land (light) / water (dark)")
             else:
+                if title in ("Plains", "Mountains"):
+                    px, py, _ = extra[0 if title == "Plains" else 1]
+                    x, y = np.meshgrid(px, py)
                 axes = figure.add_subplot(111, projection="3d")
                 axes.plot_surface(
                     x,
                     y,
                     data * settings["vertical_scale"],
                     cmap="terrain",
-                    rcount=len(ys),
-                    ccount=len(xs),
+                    rcount=data.shape[0],
+                    ccount=data.shape[1],
                     vmin=0,
                     vmax=settings["vertical_scale"],
                 )
-                axes.set_zlim(0, settings["vertical_scale"])
+                upper = max(1.0, float(data.max()))
+                axes.set_zlim(0, upper * settings["vertical_scale"])
                 axes.set_zlabel("Scaled elevation")
                 axes.set_title(title)
             axes.set_xlabel("X (samples)")
